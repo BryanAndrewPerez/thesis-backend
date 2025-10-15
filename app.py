@@ -9,20 +9,22 @@ from firebase_admin import credentials, db
 import json
 from datetime import datetime, timedelta
 import math
+from config import Config
+
 
 app = Flask(__name__)
 CORS(app)
 
 # Initialize Firebase Admin SDK
+
 def initialize_firebase():
     try:
-        # Check if Firebase is already initialized
         if not firebase_admin._apps:
-            # Get Firebase configuration from environment variables
-            service_account_path = os.getenv('FIREBASE_SERVICE_ACCOUNT_KEY_PATH', 'serviceAccountKey.json')
-            cred = credentials.Certificate(service_account_path)
+            # Use service account from config
+            service_account_info = Config.FIREBASE_SERVICE_ACCOUNT_KEY
+            cred = credentials.Certificate(service_account_info)
             firebase_admin.initialize_app(cred, {
-                'databaseURL': os.getenv('FIREBASE_DATABASE_URL', 'https://air-quality-monitoring-f97b2-default-rtdb.asia-southeast1.firebasedatabase.app/')
+                'databaseURL': Config.FIREBASE_DATABASE_URL
             })
         return True
     except Exception as e:
