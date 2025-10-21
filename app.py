@@ -425,6 +425,45 @@ def test_firebase():
             "firebase_initialized": firebase_initialized
         }), 500
 
+@app.route("/test_predict_all", methods=["POST"])
+def test_predict_all():
+    """Test predict_all endpoint with minimal data"""
+    try:
+        print("🔍 Testing predict_all endpoint...")
+        
+        # Check if models are loaded
+        models_status = {
+            "pm_model": pm_model is not None,
+            "no2_model": no2_model is not None,
+            "co_model": co_model is not None
+        }
+        
+        if not any(models_status.values()):
+            return jsonify({
+                "error": "No models loaded",
+                "models_status": models_status
+            }), 500
+            
+        # Test with minimal request
+        data = request.json or {}
+        location = data.get("location", "")
+        
+        return jsonify({
+            "status": "test_successful",
+            "models_status": models_status,
+            "firebase_initialized": firebase_initialized,
+            "location": location
+        })
+        
+    except Exception as e:
+        print(f"❌ Test error: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({
+            "error": str(e),
+            "error_type": type(e).__name__
+        }), 500
+
 @app.route("/debug_model_input", methods=["POST"])
 def debug_model_input():
     """Debug endpoint to show exact data being fed to ML models"""
@@ -616,18 +655,34 @@ def predict_co():
 def predict_all():
     """Predict all pollutants using Firebase data"""
     try:
+        print("🔍 predict_all endpoint called")
+        
+        # Check if request has JSON data
+        if not request.json:
+            print("❌ No JSON data in request")
+            return jsonify({"error": "No JSON data provided"}), 400
+            
         data = request.json
         location = data.get("location", "")
+        print(f"🔍 Location: {location}")
         
         # Fetch data from Firebase
+        print("🔍 Fetching Firebase data...")
         sensor_data = fetch_firebase_data(location)
         if not sensor_data:
+            print("❌ No sensor data from Firebase")
             return jsonify({"error": "No sensor data available in Firebase"}), 400
             
+        print(f"✅ Got {len(sensor_data)} data points from Firebase")
+        
         # Prepare data for prediction
+        print("🔍 Preparing prediction data...")
         prediction_data = prepare_prediction_data(sensor_data)
         if not prediction_data:
+            print("❌ Failed to prepare prediction data")
             return jsonify({"error": "Insufficient data for prediction"}), 400
+            
+        print("✅ Prediction data prepared successfully")
         
         # Debug: Show the exact data being fed to ML models
         print("\n" + "="*60)
@@ -674,10 +729,12 @@ def predict_all():
         
         # Store the count of processed data for response
         total_instances = len(sensor_data) if sensor_data else 0
+        print(f"🔍 Total instances: {total_instances}")
             
         results = {}
         
         # Predict PM using ML model
+        print("🔍 Starting PM prediction...")
         try:
             if pm_model is not None and pm_input_scaler is not None and pm_target_scalers is not None:
                 print(f"PM input shape: {prediction_data['pm'].shape}")
@@ -821,6 +878,7 @@ def predict_all():
                 {"hour_ahead": 1, "CO": 0.0}  # Conservative fallback
             ]
         
+        print("✅ All predictions completed successfully")
         return jsonify({
             "predictions": results,
             "last_updated": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
@@ -829,7 +887,13 @@ def predict_all():
         })
         
     except Exception as e:
-        return jsonify({"error": str(e)}), 500
+        print(f"❌ Critical error in predict_all: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({
+            "error": f"Internal server error: {str(e)}",
+            "error_type": type(e).__name__
+        }), 500
 
 # Error handlers
 @app.errorhandler(404)
