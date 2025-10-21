@@ -19,16 +19,29 @@ CORS(app, origins=["*"], methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"], al
 
 def initialize_firebase():
     try:
+        print("🔍 Initializing Firebase...")
+        print(f"🔍 FIREBASE_DATABASE_URL: {Config.FIREBASE_DATABASE_URL}")
+        print(f"🔍 FIREBASE_SERVICE_ACCOUNT_KEY exists: {Config.FIREBASE_SERVICE_ACCOUNT_KEY is not None}")
+        
         if not firebase_admin._apps:
             # Use service account from config
             service_account_info = Config.FIREBASE_SERVICE_ACCOUNT_KEY
+            if not service_account_info:
+                print("❌ FIREBASE_SERVICE_ACCOUNT_KEY is None or empty")
+                return False
+                
             cred = credentials.Certificate(service_account_info)
             firebase_admin.initialize_app(cred, {
                 'databaseURL': Config.FIREBASE_DATABASE_URL
             })
+            print("✅ Firebase initialized successfully")
+        else:
+            print("✅ Firebase already initialized")
         return True
     except Exception as e:
-        print(f"Firebase initialization error: {e}")
+        print(f"❌ Firebase initialization error: {e}")
+        import traceback
+        traceback.print_exc()
         return False
 
 # Initialize Firebase
@@ -106,7 +119,11 @@ def load_models():
 
 def fetch_firebase_data(location="", hours=24):
     """Fetch sensor data from Firebase for the last N hours"""
+    print(f"🔍 fetch_firebase_data called with location='{location}', hours={hours}")
+    print(f"🔍 firebase_initialized: {firebase_initialized}")
+    
     if not firebase_initialized:
+        print("❌ Firebase not initialized - returning None")
         return None
         
     try:
@@ -314,17 +331,23 @@ def health():
 @app.route("/debug_firebase", methods=["GET"])
 def debug_firebase():
     """Debug endpoint to check Firebase data structure"""
+    print("🔍 Debug Firebase endpoint called")
+    print(f"🔍 firebase_initialized: {firebase_initialized}")
+    
     if not firebase_initialized:
-        return jsonify({"error": "Firebase not initialized"}), 500
+        return jsonify({"error": "Firebase not initialized", "firebase_initialized": False}), 500
     
     try:
+        print("🔍 Checking Firebase data...")
         # Check what's in the root
         root_ref = db.reference('/')
         root_data = root_ref.get()
+        print(f"🔍 Root data type: {type(root_data)}")
         
         # Check sensors collection
         sensors_ref = db.reference('/sensors')
         sensors_data = sensors_ref.get()
+        print(f"🔍 Sensors data type: {type(sensors_data)}")
         
         # Count total instances
         total_instances = 0
@@ -334,13 +357,17 @@ def debug_firebase():
                     total_instances += len(device_data)
         
         return jsonify({
+            "firebase_initialized": True,
             "root_keys": list(root_data.keys()) if root_data else [],
             "sensors_keys": list(sensors_data.keys()) if sensors_data else [],
             "total_instances": total_instances,
             "sensors_data_sample": dict(list(sensors_data.items())[:2]) if sensors_data else None
         })
     except Exception as e:
-        return jsonify({"error": str(e)}), 500
+        print(f"❌ Debug Firebase error: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({"error": str(e), "firebase_initialized": firebase_initialized}), 500
 
 @app.route("/debug_model_input", methods=["POST"])
 def debug_model_input():
@@ -539,7 +566,10 @@ def predict_all():
         # Fetch data from Firebase
         sensor_data = fetch_firebase_data(location)
         if not sensor_data:
-            return jsonify({"error": "No sensor data available in Firebase"}), 400
+            print("⚠️ No Firebase data available, trying mock data...")
+            sensor_data = generate_mock_data()
+            if not sensor_data:
+                return jsonify({"error": "No sensor data available in Firebase and mock data generation failed"}), 400
             
         # Prepare data for prediction
         prediction_data = prepare_prediction_data(sensor_data)
