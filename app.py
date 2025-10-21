@@ -13,7 +13,7 @@ from config import Config
 
 
 app = Flask(__name__)
-CORS(app)
+CORS(app, origins=["*"], methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"], allow_headers=["Content-Type", "Authorization"])
 
 # Initialize Firebase Admin SDK
 
@@ -309,7 +309,7 @@ def health():
             "no2_model": no2_model is not None,
             "co_model": co_model is not None
         }
-    })
+    }), 200
 
 @app.route("/debug_firebase", methods=["GET"])
 def debug_firebase():
@@ -747,6 +747,15 @@ def predict_all():
         
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
+# Error handlers
+@app.errorhandler(404)
+def not_found(error):
+    return jsonify({"error": "Endpoint not found"}), 404
+
+@app.errorhandler(500)
+def internal_error(error):
+    return jsonify({"error": "Internal server error"}), 500
 
 if __name__ == "__main__":
     # Load models on startup
