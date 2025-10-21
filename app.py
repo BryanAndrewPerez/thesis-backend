@@ -292,9 +292,45 @@ def home():
             "/predict_no2": "POST - Predict NO2 (requires 24x3 input: NO2, hour_sin, hour_cos)",
             "/predict_co": "POST - Predict CO (requires 24x3 input: CO, hour_sin, hour_cos)",
             "/predict_all": "POST - Predict all pollutants using Firebase data",
-            "/health": "GET - Check API health and model status"
+            "/health": "GET - Check API health and model status",
+            "/debug_firebase": "GET - Debug Firebase data structure and connection",
+            "/test_predict_all": "POST - Test predict_all endpoint"
         }
     })
+
+@app.route("/test_predict_all", methods=["POST"])
+def test_predict_all():
+    """Test predict_all endpoint with minimal data"""
+    try:
+        print("🔍 Testing predict_all endpoint...")
+        
+        # Check if models are loaded
+        models_status = {
+            "pm_model": pm_model is not None,
+            "no2_model": no2_model is not None,
+            "co_model": co_model is not None
+        }
+        
+        # Test with minimal request
+        data = request.json or {}
+        location = data.get("location", "")
+        
+        return jsonify({
+            "status": "test_successful",
+            "models_status": models_status,
+            "firebase_initialized": firebase_initialized,
+            "location": location,
+            "message": "Test endpoint working - try /predict_all for full prediction"
+        })
+        
+    except Exception as e:
+        print(f"❌ Test error: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({
+            "error": str(e),
+            "error_type": type(e).__name__
+        }), 500
 
 @app.route("/health", methods=["GET"])
 def health():
@@ -315,6 +351,47 @@ def health():
         "working_directory": os.getcwd(),
         "models_dir_exists": os.path.exists('models')
     }), 200
+
+@app.route("/debug_firebase", methods=["GET"])
+def debug_firebase():
+    """Debug endpoint to check Firebase data structure"""
+    print("🔍 Debug Firebase endpoint called")
+    print(f"🔍 firebase_initialized: {firebase_initialized}")
+    
+    if not firebase_initialized:
+        return jsonify({"error": "Firebase not initialized", "firebase_initialized": False}), 500
+    
+    try:
+        print("🔍 Checking Firebase data...")
+        # Check what's in the root
+        root_ref = db.reference('/')
+        root_data = root_ref.get()
+        print(f"🔍 Root data type: {type(root_data)}")
+        
+        # Check sensors collection
+        sensors_ref = db.reference('/sensors')
+        sensors_data = sensors_ref.get()
+        print(f"🔍 Sensors data type: {type(sensors_data)}")
+        
+        # Count total instances
+        total_instances = 0
+        if sensors_data:
+            for device_id, device_data in sensors_data.items():
+                if isinstance(device_data, dict):
+                    total_instances += len(device_data)
+        
+        return jsonify({
+            "firebase_initialized": True,
+            "root_keys": list(root_data.keys()) if root_data else [],
+            "sensors_keys": list(sensors_data.keys()) if sensors_data else [],
+            "total_instances": total_instances,
+            "sensors_data_sample": dict(list(sensors_data.items())[:2]) if sensors_data else None
+        })
+    except Exception as e:
+        print(f"❌ Debug Firebase error: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({"error": str(e), "firebase_initialized": firebase_initialized}), 500
 
 @app.route("/predict_all", methods=["POST"])
 def predict_all():
@@ -357,6 +434,8 @@ def predict_all():
         # Initialize results
         results = {}
         total_instances = len(sensor_data)
+        print(f"🔍 Total instances: {total_instances}")
+        print(f"🔍 Prediction data keys: {list(prediction_data.keys())}")
         
         # Predict PM using ML model with error handling
         print("🔍 Starting PM prediction...")
