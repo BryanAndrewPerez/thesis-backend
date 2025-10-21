@@ -23,6 +23,11 @@ def initialize_firebase():
         print(f"🔍 FIREBASE_DATABASE_URL: {Config.FIREBASE_DATABASE_URL}")
         print(f"🔍 FIREBASE_SERVICE_ACCOUNT_KEY exists: {Config.FIREBASE_SERVICE_ACCOUNT_KEY is not None}")
         
+        # Check if environment variables are set
+        import os
+        print(f"🔍 Environment FIREBASE_DATABASE_URL: {os.getenv('FIREBASE_DATABASE_URL')}")
+        print(f"🔍 Environment FIREBASE_SERVICE_ACCOUNT_KEY exists: {os.getenv('FIREBASE_SERVICE_ACCOUNT_KEY') is not None}")
+        
         if not firebase_admin._apps:
             # Use service account from config
             service_account_info = Config.FIREBASE_SERVICE_ACCOUNT_KEY
