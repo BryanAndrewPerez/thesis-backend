@@ -44,9 +44,6 @@ def initialize_firebase():
         traceback.print_exc()
         return False
 
-# Initialize Firebase
-firebase_initialized = initialize_firebase()
-
 # === Load PM model and scalers ===
 PM_MODEL_PATH = "models/chunk_pmonly.keras"
 PM_INPUT_SCALER_PATH = "models/input_scaler_pmonly.pkl"
@@ -80,42 +77,67 @@ def load_models():
     global no2_model, no2_input_scaler, no2_target_scalers
     global co_model, co_input_scaler, co_target_scalers
     
+    print("🔍 Starting model loading process...")
+    print(f"🔍 Current working directory: {os.getcwd()}")
+    print(f"🔍 Models directory exists: {os.path.exists('models')}")
+    
     try:
         # Load PM model and scalers
+        print(f"🔍 Checking PM model at: {PM_MODEL_PATH}")
         if os.path.exists(PM_MODEL_PATH):
+            print("✅ PM model file found, loading...")
             pm_model = tf.keras.models.load_model(PM_MODEL_PATH)
             with open(PM_INPUT_SCALER_PATH, "rb") as f:
                 pm_input_scaler = pickle.load(f)
             with open(PM_TARGET_SCALERS_PATH, "rb") as f:
                 pm_target_scalers = pickle.load(f)
-            print("PM model loaded successfully")
+            print("✅ PM model loaded successfully")
         else:
-            print(f"PM model not found at {PM_MODEL_PATH}")
+            print(f"❌ PM model not found at {PM_MODEL_PATH}")
             
         # Load NO2 model and scalers
+        print(f"🔍 Checking NO2 model at: {NO2_MODEL_PATH}")
         if os.path.exists(NO2_MODEL_PATH):
+            print("✅ NO2 model file found, loading...")
             no2_model = tf.keras.models.load_model(NO2_MODEL_PATH)
             with open(NO2_INPUT_SCALER_PATH, "rb") as f:
                 no2_input_scaler = pickle.load(f)
             with open(NO2_TARGET_SCALERS_PATH, "rb") as f:
                 no2_target_scalers = pickle.load(f)
-            print("NO2 model loaded successfully")
+            print("✅ NO2 model loaded successfully")
         else:
-            print(f"NO2 model not found at {NO2_MODEL_PATH}")
+            print(f"❌ NO2 model not found at {NO2_MODEL_PATH}")
             
         # Load CO model and scalers
+        print(f"🔍 Checking CO model at: {CO_MODEL_PATH}")
         if os.path.exists(CO_MODEL_PATH):
+            print("✅ CO model file found, loading...")
             co_model = tf.keras.models.load_model(CO_MODEL_PATH)
             with open(CO_INPUT_SCALER_PATH, "rb") as f:
                 co_input_scaler = pickle.load(f)
             with open(CO_TARGET_SCALERS_PATH, "rb") as f:
                 co_target_scalers = pickle.load(f)
-            print("CO model loaded successfully")
+            print("✅ CO model loaded successfully")
         else:
-            print(f"CO model not found at {CO_MODEL_PATH}")
+            print(f"❌ CO model not found at {CO_MODEL_PATH}")
+            
+        # Summary
+        print("📊 Model Loading Summary:")
+        print(f"   PM Model: {'✅ Loaded' if pm_model is not None else '❌ Failed'}")
+        print(f"   NO2 Model: {'✅ Loaded' if no2_model is not None else '❌ Failed'}")
+        print(f"   CO Model: {'✅ Loaded' if co_model is not None else '❌ Failed'}")
             
     except Exception as e:
-        print(f"Error loading models: {e}")
+        print(f"❌ Error loading models: {e}")
+        import traceback
+        traceback.print_exc()
+
+# Initialize Firebase
+firebase_initialized = initialize_firebase()
+
+# Load models on startup
+print("🔄 Loading ML models on startup...")
+load_models()
 
 def fetch_firebase_data(location="", hours=24):
     """Fetch sensor data from Firebase for the last N hours"""
@@ -225,27 +247,6 @@ def fetch_firebase_data(location="", hours=24):
         print(f"Error fetching Firebase data: {e}")
         return None
 
-def generate_mock_data():
-    """Generate mock sensor data for testing when Firebase data is unavailable"""
-    from datetime import datetime, timedelta
-    import random
-    
-    mock_data = []
-    now = datetime.now()
-    
-    for i in range(24):
-        timestamp = now - timedelta(hours=23-i)
-        mock_data.append({
-            'timestamp': timestamp.strftime("%Y-%m-%d %H:%M:%S"),
-            'time': timestamp,
-            'pm25': random.uniform(10, 50),
-            'pm10': random.uniform(20, 80),
-            'no2': random.uniform(5, 25),
-            'co': random.uniform(1, 10),
-            'so2': random.uniform(2, 15)
-        })
-    
-    return mock_data
 
 def prepare_prediction_data(sensor_data):
     """Prepare sensor data for prediction models"""
@@ -325,7 +326,14 @@ def health():
             "pm_model": pm_model is not None,
             "no2_model": no2_model is not None,
             "co_model": co_model is not None
-        }
+        },
+        "model_paths": {
+            "pm_model_path": PM_MODEL_PATH,
+            "no2_model_path": NO2_MODEL_PATH,
+            "co_model_path": CO_MODEL_PATH
+        },
+        "working_directory": os.getcwd(),
+        "models_dir_exists": os.path.exists('models')
     }), 200
 
 @app.route("/debug_firebase", methods=["GET"])
@@ -368,6 +376,49 @@ def debug_firebase():
         import traceback
         traceback.print_exc()
         return jsonify({"error": str(e), "firebase_initialized": firebase_initialized}), 500
+
+@app.route("/reload_models", methods=["POST"])
+def reload_models():
+    """Manually reload models"""
+    try:
+        print("🔄 Manually reloading models...")
+        load_models()
+        return jsonify({
+            "status": "success",
+            "models_loaded": {
+                "pm_model": pm_model is not None,
+                "no2_model": no2_model is not None,
+                "co_model": co_model is not None
+            }
+        })
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route("/test_firebase", methods=["GET"])
+def test_firebase():
+    """Test Firebase data fetching"""
+    try:
+        print("🔍 Testing Firebase data fetching...")
+        data = fetch_firebase_data("", 24)
+        if data:
+            return jsonify({
+                "status": "success",
+                "data_count": len(data),
+                "sample_data": data[:3] if len(data) >= 3 else data,
+                "firebase_initialized": firebase_initialized
+            })
+        else:
+            return jsonify({
+                "status": "no_data",
+                "message": "No data returned from Firebase",
+                "firebase_initialized": firebase_initialized
+            })
+    except Exception as e:
+        return jsonify({
+            "status": "error",
+            "error": str(e),
+            "firebase_initialized": firebase_initialized
+        }), 500
 
 @app.route("/debug_model_input", methods=["POST"])
 def debug_model_input():
@@ -566,10 +617,7 @@ def predict_all():
         # Fetch data from Firebase
         sensor_data = fetch_firebase_data(location)
         if not sensor_data:
-            print("⚠️ No Firebase data available, trying mock data...")
-            sensor_data = generate_mock_data()
-            if not sensor_data:
-                return jsonify({"error": "No sensor data available in Firebase and mock data generation failed"}), 400
+            return jsonify({"error": "No sensor data available in Firebase"}), 400
             
         # Prepare data for prediction
         prediction_data = prepare_prediction_data(sensor_data)
