@@ -291,7 +291,7 @@ def home():
             "/predict_pm": "POST - Predict PM2.5 and PM10 (requires 24x4 input: PM2.5, PM10, hour_sin, hour_cos)",
             "/predict_no2": "POST - Predict NO2 (requires 24x3 input: NO2, hour_sin, hour_cos)",
             "/predict_co": "POST - Predict CO (requires 24x3 input: CO, hour_sin, hour_cos)",
-            "/predict_all": "POST - Predict all pollutants using Firebase data",
+            "/predict_all": "GET/POST - Predict all pollutants using Firebase data",
             "/health": "GET - Check API health and model status",
             "/debug_firebase": "GET - Debug Firebase data structure and connection",
             "/test_predict_all": "POST - Test predict_all endpoint"
@@ -393,20 +393,27 @@ def debug_firebase():
         traceback.print_exc()
         return jsonify({"error": str(e), "firebase_initialized": firebase_initialized}), 500
 
-@app.route("/predict_all", methods=["POST"])
+@app.route("/predict_all", methods=["GET", "POST"])
 def predict_all():
     """Predict all pollutants using Firebase data with comprehensive error handling"""
     try:
         print("🔍 predict_all endpoint called")
         
-        # Check if request has JSON data
-        if not request.json:
-            print("❌ No JSON data in request")
-            return jsonify({"error": "No JSON data provided"}), 400
-            
-        data = request.json
-        location = data.get("location", "")
-        print(f"🔍 Location: {location}")
+        # Handle both GET and POST requests
+        if request.method == "GET":
+            # For GET requests, use default values
+            data = {}
+            location = ""
+            print("🔍 GET request - using default values")
+        else:
+            # For POST requests, check for JSON data
+            if not request.json:
+                print("❌ No JSON data in request")
+                return jsonify({"error": "No JSON data provided"}), 400
+                
+            data = request.json
+            location = data.get("location", "")
+            print(f"🔍 POST request - Location: {location}")
         
         # Check if Firebase is initialized
         if not firebase_initialized:
