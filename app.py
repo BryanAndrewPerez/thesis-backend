@@ -317,7 +317,7 @@ def home():
             "/predict_pm": "POST - Predict PM2.5 and PM10 (requires 24x4 input: PM2.5, PM10, hour_sin, hour_cos)",
             "/predict_no2": "POST - Predict NO2 (requires 24x3 input: NO2, hour_sin, hour_cos)",
             "/predict_co": "POST - Predict CO (requires 24x3 input: CO, hour_sin, hour_cos)",
-            "/predict_all": "POST - Predict all pollutants using Firebase data",
+            "/predict_all": "POST/GET - Predict all pollutants using Firebase data (accepts JSON, form data, or query params)",
             "/health": "GET - Check API health and model status"
         }
     })
@@ -658,12 +658,37 @@ def predict_all():
     try:
         print("🔍 predict_all endpoint called")
         
-        # Check if request has JSON data
-        if not request.json:
-            print("❌ No JSON data in request")
-            return jsonify({"error": "No JSON data provided"}), 400
-            
-        data = request.json
+        # Handle different request types and Content-Type headers
+        data = {}
+        if request.method == "GET":
+            # For GET requests, use query parameters
+            data = request.args.to_dict()
+            print("🔍 GET request - using query parameters")
+        else:
+            # For POST requests, try to get JSON data with fallback
+            try:
+                if request.is_json:
+                    data = request.get_json() or {}
+                    print("🔍 POST request - JSON data received")
+                else:
+                    # Try to parse as JSON even if Content-Type is not set correctly
+                    try:
+                        import json as json_lib
+                        raw_data = request.get_data(as_text=True)
+                        if raw_data:
+                            data = json_lib.loads(raw_data)
+                            print("🔍 POST request - parsed JSON from raw data")
+                        else:
+                            data = {}
+                            print("🔍 POST request - no data, using empty dict")
+                    except (json_lib.JSONDecodeError, ValueError):
+                        # If JSON parsing fails, try form data
+                        data = request.form.to_dict()
+                        print("🔍 POST request - using form data")
+            except Exception as e:
+                print(f"⚠️  Error parsing request data: {e}")
+                data = {}
+        
         location = data.get("location", "")
         print(f"🔍 Location: {location}")
         
