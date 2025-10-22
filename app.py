@@ -13,7 +13,7 @@ from config import Config
 
 
 app = Flask(__name__)
-CORS(app, origins=["*"], methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"], allow_headers=["Content-Type", "Authorization"])
+CORS(app, origins=['https://thesis-website-deployment.onrender.com'], methods=['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'], allow_headers=['Content-Type', 'Authorization'])
 
 # Initialize Firebase Admin SDK
 
