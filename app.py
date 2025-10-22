@@ -135,12 +135,21 @@ def load_models():
         import traceback
         traceback.print_exc()
 
-# Initialize Firebase
-firebase_initialized = initialize_firebase()
+# Initialize Firebase with error handling
+try:
+    firebase_initialized = initialize_firebase()
+except Exception as e:
+    print(f"❌ Critical error during Firebase initialization: {e}")
+    firebase_initialized = False
 
-# Load models on startup
-print("🔄 Loading ML models on startup...")
-load_models()
+# Load models on startup with error handling
+try:
+    print("🔄 Loading ML models on startup...")
+    load_models()
+except Exception as e:
+    print(f"❌ Critical error during model loading: {e}")
+    import traceback
+    traceback.print_exc()
 
 def fetch_firebase_data(location="", hours=24):
     """Fetch sensor data from Firebase for the last N hours with better error handling"""
@@ -285,18 +294,35 @@ def prepare_prediction_data(sensor_data):
 
 @app.route("/", methods=["GET"])
 def home():
-    return jsonify({
-        "message": "Air Quality Prediction API",
-        "available_endpoints": {
-            "/predict_pm": "POST - Predict PM2.5 and PM10 (requires 24x4 input: PM2.5, PM10, hour_sin, hour_cos)",
-            "/predict_no2": "POST - Predict NO2 (requires 24x3 input: NO2, hour_sin, hour_cos)",
-            "/predict_co": "POST - Predict CO (requires 24x3 input: CO, hour_sin, hour_cos)",
-            "/predict_all": "GET/POST - Predict all pollutants using Firebase data",
-            "/health": "GET - Check API health and model status",
-            "/debug_firebase": "GET - Debug Firebase data structure and connection",
-            "/test_predict_all": "POST - Test predict_all endpoint"
-        }
-    })
+    try:
+        return jsonify({
+            "message": "Air Quality Prediction API",
+            "status": "running",
+            "available_endpoints": {
+                "/predict_pm": "POST - Predict PM2.5 and PM10 (requires 24x4 input: PM2.5, PM10, hour_sin, hour_cos)",
+                "/predict_no2": "POST - Predict NO2 (requires 24x3 input: NO2, hour_sin, hour_cos)",
+                "/predict_co": "POST - Predict CO (requires 24x3 input: CO, hour_sin, hour_cos)",
+                "/predict_all": "GET/POST - Predict all pollutants using Firebase data",
+                "/health": "GET - Check API health and model status",
+                "/debug_firebase": "GET - Debug Firebase data structure and connection",
+                "/test_predict_all": "POST - Test predict_all endpoint",
+                "/simple_health": "GET - Simple health check (no dependencies)"
+            }
+        })
+    except Exception as e:
+        return jsonify({"error": f"Home endpoint error: {str(e)}"}), 500
+
+@app.route("/simple_health", methods=["GET"])
+def simple_health():
+    """Simple health check that doesn't depend on Firebase or models"""
+    try:
+        return jsonify({
+            "status": "healthy",
+            "message": "Backend is running",
+            "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        })
+    except Exception as e:
+        return jsonify({"error": f"Simple health check error: {str(e)}"}), 500
 
 @app.route("/test_predict_all", methods=["POST"])
 def test_predict_all():
@@ -418,7 +444,11 @@ def predict_all():
         # Check if Firebase is initialized
         if not firebase_initialized:
             print("❌ Firebase not initialized")
-            return jsonify({"error": "Firebase not initialized"}), 500
+            return jsonify({
+                "error": "Firebase not initialized",
+                "message": "Please check Firebase configuration",
+                "firebase_initialized": False
+            }), 500
         
         # Fetch data from Firebase
         print("🔍 Fetching Firebase data...")
@@ -443,6 +473,14 @@ def predict_all():
         total_instances = len(sensor_data)
         print(f"🔍 Total instances: {total_instances}")
         print(f"🔍 Prediction data keys: {list(prediction_data.keys())}")
+        
+        # Check if any models are loaded
+        models_available = {
+            "pm": pm_model is not None and pm_input_scaler is not None and pm_target_scalers is not None,
+            "no2": no2_model is not None and no2_input_scaler is not None and no2_target_scalers is not None,
+            "co": co_model is not None and co_input_scaler is not None and co_target_scalers is not None
+        }
+        print(f"🔍 Models available: {models_available}")
         
         # Predict PM using ML model with error handling
         print("🔍 Starting PM prediction...")
