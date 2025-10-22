@@ -652,7 +652,7 @@ def predict_co():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-@app.route("/predict_all", methods=["POST"])
+@app.route("/predict_all", methods=["POST", "GET"])
 def predict_all():
     """Predict all pollutants using Firebase data"""
     try:
