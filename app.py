@@ -1,6 +1,8 @@
 from flask import Flask, request, jsonify, make_response
 from flask_cors import CORS
 import tensorflow as tf
+tf.config.threading.set_intra_op_parallelism_threads(1)
+tf.config.threading.set_inter_op_parallelism_threads(1)
 import numpy as np
 import pickle
 import os
@@ -138,12 +140,15 @@ def load_models():
         import traceback
         traceback.print_exc()
 
-# Initialize Firebase
+# Initialize Firebase lazily; avoid blocking startup if credentials missing
 firebase_initialized = initialize_firebase()
 
-# Load models on startup
-print("🔄 Loading ML models on startup...")
-load_models()
+# Optionally load models on startup only if explicitly requested via env
+if os.getenv('EAGER_LOAD_MODELS', 'false').lower() == 'true':
+    print("🔄 Loading ML models on startup...")
+    load_models()
+else:
+    print("⏳ Skipping eager model load (EAGER_LOAD_MODELS != true)")
 
 def fetch_firebase_data(location="", hours=24):
     """Fetch sensor data from Firebase for the last N hours"""
