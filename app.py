@@ -88,18 +88,42 @@ def load_models():
     print("🔍 Starting model loading process...")
     print(f"🔍 Current working directory: {os.getcwd()}")
     print(f"🔍 Models directory exists: {os.path.exists('models')}")
+    print(f"🔍 TensorFlow version: {tf.__version__}")
+    
+    # List all files in models directory
+    if os.path.exists('models'):
+        model_files = os.listdir('models')
+        print(f"🔍 Files in models directory: {model_files}")
     
     try:
         # Load PM model and scalers
         print(f"🔍 Checking PM model at: {PM_MODEL_PATH}")
         if os.path.exists(PM_MODEL_PATH):
             print("✅ PM model file found, loading...")
-            pm_model = tf.keras.models.load_model(PM_MODEL_PATH)
-            with open(PM_INPUT_SCALER_PATH, "rb") as f:
-                pm_input_scaler = pickle.load(f)
-            with open(PM_TARGET_SCALERS_PATH, "rb") as f:
-                pm_target_scalers = pickle.load(f)
-            print("✅ PM model loaded successfully")
+            try:
+                pm_model = tf.keras.models.load_model(PM_MODEL_PATH, compile=False)
+                print(f"✅ PM model loaded successfully, shape: {pm_model.input_shape}")
+            except Exception as e:
+                print(f"❌ PM model loading failed: {e}")
+                import traceback
+                traceback.print_exc()
+                pm_model = None
+            
+            try:
+                with open(PM_INPUT_SCALER_PATH, "rb") as f:
+                    pm_input_scaler = pickle.load(f)
+                print("✅ PM input scaler loaded")
+            except Exception as e:
+                print(f"❌ PM input scaler loading failed: {e}")
+                pm_input_scaler = None
+                
+            try:
+                with open(PM_TARGET_SCALERS_PATH, "rb") as f:
+                    pm_target_scalers = pickle.load(f)
+                print("✅ PM target scalers loaded")
+            except Exception as e:
+                print(f"❌ PM target scalers loading failed: {e}")
+                pm_target_scalers = None
         else:
             print(f"❌ PM model not found at {PM_MODEL_PATH}")
             
@@ -107,12 +131,30 @@ def load_models():
         print(f"🔍 Checking NO2 model at: {NO2_MODEL_PATH}")
         if os.path.exists(NO2_MODEL_PATH):
             print("✅ NO2 model file found, loading...")
-            no2_model = tf.keras.models.load_model(NO2_MODEL_PATH)
-            with open(NO2_INPUT_SCALER_PATH, "rb") as f:
-                no2_input_scaler = pickle.load(f)
-            with open(NO2_TARGET_SCALERS_PATH, "rb") as f:
-                no2_target_scalers = pickle.load(f)
-            print("✅ NO2 model loaded successfully")
+            try:
+                no2_model = tf.keras.models.load_model(NO2_MODEL_PATH, compile=False)
+                print(f"✅ NO2 model loaded successfully, shape: {no2_model.input_shape}")
+            except Exception as e:
+                print(f"❌ NO2 model loading failed: {e}")
+                import traceback
+                traceback.print_exc()
+                no2_model = None
+            
+            try:
+                with open(NO2_INPUT_SCALER_PATH, "rb") as f:
+                    no2_input_scaler = pickle.load(f)
+                print("✅ NO2 input scaler loaded")
+            except Exception as e:
+                print(f"❌ NO2 input scaler loading failed: {e}")
+                no2_input_scaler = None
+                
+            try:
+                with open(NO2_TARGET_SCALERS_PATH, "rb") as f:
+                    no2_target_scalers = pickle.load(f)
+                print("✅ NO2 target scalers loaded")
+            except Exception as e:
+                print(f"❌ NO2 target scalers loading failed: {e}")
+                no2_target_scalers = None
         else:
             print(f"❌ NO2 model not found at {NO2_MODEL_PATH}")
             
@@ -120,12 +162,30 @@ def load_models():
         print(f"🔍 Checking CO model at: {CO_MODEL_PATH}")
         if os.path.exists(CO_MODEL_PATH):
             print("✅ CO model file found, loading...")
-            co_model = tf.keras.models.load_model(CO_MODEL_PATH)
-            with open(CO_INPUT_SCALER_PATH, "rb") as f:
-                co_input_scaler = pickle.load(f)
-            with open(CO_TARGET_SCALERS_PATH, "rb") as f:
-                co_target_scalers = pickle.load(f)
-            print("✅ CO model loaded successfully")
+            try:
+                co_model = tf.keras.models.load_model(CO_MODEL_PATH, compile=False)
+                print(f"✅ CO model loaded successfully, shape: {co_model.input_shape}")
+            except Exception as e:
+                print(f"❌ CO model loading failed: {e}")
+                import traceback
+                traceback.print_exc()
+                co_model = None
+            
+            try:
+                with open(CO_INPUT_SCALER_PATH, "rb") as f:
+                    co_input_scaler = pickle.load(f)
+                print("✅ CO input scaler loaded")
+            except Exception as e:
+                print(f"❌ CO input scaler loading failed: {e}")
+                co_input_scaler = None
+                
+            try:
+                with open(CO_TARGET_SCALERS_PATH, "rb") as f:
+                    co_target_scalers = pickle.load(f)
+                print("✅ CO target scalers loaded")
+            except Exception as e:
+                print(f"❌ CO target scalers loading failed: {e}")
+                co_target_scalers = None
         else:
             print(f"❌ CO model not found at {CO_MODEL_PATH}")
             
@@ -134,9 +194,12 @@ def load_models():
         print(f"   PM Model: {'✅ Loaded' if pm_model is not None else '❌ Failed'}")
         print(f"   NO2 Model: {'✅ Loaded' if no2_model is not None else '❌ Failed'}")
         print(f"   CO Model: {'✅ Loaded' if co_model is not None else '❌ Failed'}")
+        print(f"   PM Scalers: {'✅ Loaded' if pm_input_scaler is not None and pm_target_scalers is not None else '❌ Failed'}")
+        print(f"   NO2 Scalers: {'✅ Loaded' if no2_input_scaler is not None and no2_target_scalers is not None else '❌ Failed'}")
+        print(f"   CO Scalers: {'✅ Loaded' if co_input_scaler is not None and co_target_scalers is not None else '❌ Failed'}")
             
     except Exception as e:
-        print(f"❌ Error loading models: {e}")
+        print(f"❌ Critical error loading models: {e}")
         import traceback
         traceback.print_exc()
 
@@ -424,7 +487,7 @@ def debug_firebase():
         traceback.print_exc()
         return jsonify({"error": str(e), "firebase_initialized": firebase_initialized}), 500
 
-@app.route("/reload_models", methods=["POST"])
+@app.route("/reload_models", methods=["POST", "GET"])
 def reload_models():
     """Manually reload models"""
     try:
@@ -437,9 +500,17 @@ def reload_models():
                 "pm_model": pm_model is not None,
                 "no2_model": no2_model is not None,
                 "co_model": co_model is not None
+            },
+            "scalers_loaded": {
+                "pm_scalers": pm_input_scaler is not None and pm_target_scalers is not None,
+                "no2_scalers": no2_input_scaler is not None and no2_target_scalers is not None,
+                "co_scalers": co_input_scaler is not None and co_target_scalers is not None
             }
         })
     except Exception as e:
+        print(f"❌ Error in reload_models: {e}")
+        import traceback
+        traceback.print_exc()
         return jsonify({"error": str(e)}), 500
 
 @app.route("/test_firebase", methods=["GET"])
