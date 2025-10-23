@@ -140,6 +140,26 @@ def load_models():
         import traceback
         traceback.print_exc()
 
+def get_model_files_status():
+    """Return whether each model file and scaler exists on disk."""
+    return {
+        "pm": {
+            "model_exists": os.path.exists(PM_MODEL_PATH),
+            "input_scaler_exists": os.path.exists(PM_INPUT_SCALER_PATH),
+            "target_scalers_exists": os.path.exists(PM_TARGET_SCALERS_PATH)
+        },
+        "no2": {
+            "model_exists": os.path.exists(NO2_MODEL_PATH),
+            "input_scaler_exists": os.path.exists(NO2_INPUT_SCALER_PATH),
+            "target_scalers_exists": os.path.exists(NO2_TARGET_SCALERS_PATH)
+        },
+        "co": {
+            "model_exists": os.path.exists(CO_MODEL_PATH),
+            "input_scaler_exists": os.path.exists(CO_INPUT_SCALER_PATH),
+            "target_scalers_exists": os.path.exists(CO_TARGET_SCALERS_PATH)
+        }
+    }
+
 # Initialize Firebase lazily; avoid blocking startup if credentials missing
 firebase_initialized = initialize_firebase()
 
@@ -358,6 +378,7 @@ def health():
             "no2_model_path": NO2_MODEL_PATH,
             "co_model_path": CO_MODEL_PATH
         },
+        "model_files": get_model_files_status(),
         "working_directory": os.getcwd(),
         "models_dir_exists": os.path.exists('models')
     }), 200
@@ -411,6 +432,7 @@ def reload_models():
         load_models()
         return jsonify({
             "status": "success",
+            "model_files": get_model_files_status(),
             "models_loaded": {
                 "pm_model": pm_model is not None,
                 "no2_model": no2_model is not None,
@@ -678,6 +700,13 @@ def predict_all():
     try:
         print("🔍 predict_all endpoint called")
         
+        # Lazy-load models on first use if not already loaded
+        global pm_model, no2_model, co_model
+        if pm_model is None or no2_model is None or co_model is None:
+            print("⏳ Models not loaded yet. Attempting lazy load...")
+            load_models()
+            print(f"Models loaded status after lazy load: pm={pm_model is not None}, no2={no2_model is not None}, co={co_model is not None}")
+
         # Handle different request types and Content-Type headers
         data = {}
         if request.method == "GET":
