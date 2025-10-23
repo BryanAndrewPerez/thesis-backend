@@ -287,8 +287,12 @@ def fetch_firebase_data(location="", hours=24):
                         'readings': readings
                     })
         
-        # Sort by timestamp_key (Firebase push keys are chronological)
-        all_readings.sort(key=lambda x: x['timestamp_key'])
+        # Sort by timestamp_key (Firebase push keys are chronological) - NEWEST FIRST
+        all_readings.sort(key=lambda x: x['timestamp_key'], reverse=True)
+        print(f"🔍 Total readings found: {len(all_readings)}")
+        if all_readings:
+            print(f"🔍 Newest reading timestamp: {all_readings[0]['timestamp_key']}")
+            print(f"🔍 Oldest reading timestamp: {all_readings[-1]['timestamp_key']}")
         
         # Process the sorted readings
         for reading in all_readings:
@@ -333,8 +337,10 @@ def fetch_firebase_data(location="", hours=24):
             print(f"Total instances available: {len(processed_data)}")
         
         # Return the most recent 24 instances for prediction
-        recent_data = processed_data[-24:] if len(processed_data) >= 24 else processed_data
+        recent_data = processed_data[:24] if len(processed_data) >= 24 else processed_data
         print(f"Using {len(recent_data)} most recent instances for prediction")
+        if recent_data:
+            print(f"🔍 Data time range: {recent_data[0]['timestamp']} to {recent_data[-1]['timestamp']}")
         return recent_data
         
     except Exception as e:
@@ -771,12 +777,15 @@ def predict_all():
     try:
         print("🔍 predict_all endpoint called")
         
-        # Lazy-load models on first use if not already loaded
+        # Force reload models to ensure they're loaded
         global pm_model, no2_model, co_model
-        if pm_model is None or no2_model is None or co_model is None:
-            print("⏳ Models not loaded yet. Attempting lazy load...")
-            load_models()
-            print(f"Models loaded status after lazy load: pm={pm_model is not None}, no2={no2_model is not None}, co={co_model is not None}")
+        print("⏳ Ensuring models are loaded...")
+        load_models()
+        print(f"Models loaded status: pm={pm_model is not None}, no2={no2_model is not None}, co={co_model is not None}")
+        
+        # Check if any models failed to load
+        if not any([pm_model, no2_model, co_model]):
+            print("❌ No models loaded successfully - predictions will use fallback values")
 
         # Handle different request types and Content-Type headers
         data = {}
@@ -1049,11 +1058,24 @@ def predict_all():
             ]
         
         print("✅ All predictions completed successfully")
+        
+        # Add data freshness info
+        data_freshness = "unknown"
+        if sensor_data and len(sensor_data) > 0:
+            latest_data_time = sensor_data[0]['timestamp']  # First item is newest
+            data_freshness = latest_data_time
+        
         return jsonify({
             "predictions": results,
             "last_updated": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
             "data_count": total_instances,
-            "total_instances": total_instances
+            "total_instances": total_instances,
+            "data_freshness": data_freshness,
+            "models_used": {
+                "pm": pm_model is not None,
+                "no2": no2_model is not None,
+                "co": co_model is not None
+            }
         })
         
     except Exception as e:
