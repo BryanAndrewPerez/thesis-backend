@@ -383,24 +383,21 @@ def prepare_prediction_data(sensor_data):
         hour_cos = math.cos(2 * math.pi * hour / 24)
         
         # PM data: PM2.5, PM10, hour_sin, hour_cos
-        # Scale up PM values from low range (3-7) to typical range (12-28) for model compatibility
+        # Let the model's scaler handle normalization - use raw values
         raw_pm25 = float(data_point.get('pm25', 0))
         raw_pm10 = float(data_point.get('pm10', 0))
-        scaled_pm25 = raw_pm25 * 2.0  # Scale up by factor of 2 (3-7 -> 6-14)
-        scaled_pm10 = raw_pm10 * 2.0  # Scale up by factor of 2 (4-8 -> 8-16)
         pm_data.append([
-            scaled_pm25,
-            scaled_pm10,
+            raw_pm25,
+            raw_pm10,
             hour_sin,
             hour_cos
         ])
         
         # NO2 data: NO2, hour_sin, hour_cos
-        # Scale down NO2 values from 300+ range to 0-100 range for model compatibility
+        # Let the model's scaler handle normalization - use raw values
         raw_no2 = float(data_point.get('no2', 0))
-        scaled_no2 = raw_no2 / 4.0  # Scale down by factor of 4 (300+ -> 75+)
         no2_data.append([
-            scaled_no2,
+            raw_no2,
             hour_sin,
             hour_cos
         ])
@@ -940,16 +937,14 @@ def predict_all():
                     pred_inverse_cols.append(sc.inverse_transform(pred_scaled[:, i].reshape(-1, 1)).flatten())
                 pred_inverse = np.vstack(pred_inverse_cols).T  # (336, 2)
                 
-                # Get predictions for next 3 hours (indices 0..2) and scale back down
+                # Get predictions for next 3 hours (indices 0..2)
                 pm_horizon = min(3, pred_inverse.shape[0])
                 pm_list = []
                 for h in range(pm_horizon):
-                    scaled_pm25 = float(pred_inverse[h][0]) / 2.0
-                    scaled_pm10 = float(pred_inverse[h][1]) / 2.0
-                    pm_list.append({"hour_ahead": h + 1, "PM2.5": max(0, scaled_pm25), "PM10": max(0, scaled_pm10)})
+                    pm_list.append({"hour_ahead": h + 1, "PM2.5": max(0, float(pred_inverse[h][0])), "PM10": max(0, float(pred_inverse[h][1]))})
                 results['pm'] = pm_list
                 if pm_list:
-                    print(f"PM prediction using ML model (scaled) H+1: PM2.5={pm_list[0]['PM2.5']:.2f}, PM10={pm_list[0]['PM10']:.2f}")
+                    print(f"PM prediction using ML model H+1: PM2.5={pm_list[0]['PM2.5']:.2f}, PM10={pm_list[0]['PM10']:.2f}")
             else:
                 # Fallback to trend analysis if model not loaded
                 current_pm25 = float(prediction_data['pm'][-1][0])
@@ -984,15 +979,14 @@ def predict_all():
                 # Inverse transform output
                 pred_inverse = no2_target_scalers[0].inverse_transform(pred_scaled).flatten()
                 
-                # Get predictions for next 3 hours and scale back up
+                # Get predictions for next 3 hours
                 no2_horizon = min(3, pred_inverse.shape[0])
                 no2_list = []
                 for h in range(no2_horizon):
-                    scaled_prediction = float(pred_inverse[h]) * 4.0
-                    no2_list.append({"hour_ahead": h + 1, "NO2": max(0, scaled_prediction)})
+                    no2_list.append({"hour_ahead": h + 1, "NO2": max(0, float(pred_inverse[h]))})
                 results['no2'] = no2_list
                 if no2_list:
-                    print(f"NO2 prediction using ML model (scaled) H+1: {no2_list[0]['NO2']:.2f}")
+                    print(f"NO2 prediction using ML model H+1: {no2_list[0]['NO2']:.2f}")
             else:
                 # Fallback to trend analysis if model not loaded
                 current_no2 = float(prediction_data['no2'][-1][0])
