@@ -1139,14 +1139,29 @@ def predict_all():
         # Show PM data (first 5 and last 5 instances)
         print(f"\n📊 PM DATA (PM2.5, PM10, hour_sin, hour_cos):")
         print(f"   Shape: {prediction_data['pm'].shape}")
+        print(f"   Note: Indices 0-23 represent the 24 instances, where [0] is oldest and [23] is newest")
         print(f"   First 5 instances:")
         for i in range(min(5, len(prediction_data['pm']))):
             row = prediction_data['pm'][i]
-            print(f"     [{i}]: PM2.5={row[0]:.2f}, PM10={row[1]:.2f}, sin={row[2]:.3f}, cos={row[3]:.3f}")
+            # Map array index to sensor_data index
+            # sensor_data is sorted oldest to newest, and we took the last 24
+            # So pm_data[i] corresponds to sensor_data[len(sensor_data) - 24 + i]
+            idx_in_sensor = len(sensor_data) - 24 + i if len(sensor_data) >= 24 else i
+            if idx_in_sensor >= 0 and idx_in_sensor < len(sensor_data):
+                raw_entry = sensor_data[idx_in_sensor]
+                print(f"     [{i}]: PM2.5={row[0]:.2f} (raw: {raw_entry.get('pm25', 0)}), PM10={row[1]:.2f} (raw: {raw_entry.get('pm10', 0)}), sin={row[2]:.3f}, cos={row[3]:.3f}, timestamp: {raw_entry.get('timestamp', 'N/A')}")
+            else:
+                print(f"     [{i}]: PM2.5={row[0]:.2f}, PM10={row[1]:.2f}, sin={row[2]:.3f}, cos={row[3]:.3f}")
         print(f"   Last 5 instances:")
         for i in range(max(0, len(prediction_data['pm'])-5), len(prediction_data['pm'])):
             row = prediction_data['pm'][i]
-            print(f"     [{i}]: PM2.5={row[0]:.2f}, PM10={row[1]:.2f}, sin={row[2]:.3f}, cos={row[3]:.3f}")
+            # Map array index to sensor_data index
+            idx_in_sensor = len(sensor_data) - 24 + i if len(sensor_data) >= 24 else i
+            if idx_in_sensor >= 0 and idx_in_sensor < len(sensor_data):
+                raw_entry = sensor_data[idx_in_sensor]
+                print(f"     [{i}]: PM2.5={row[0]:.2f} (raw: {raw_entry.get('pm25', 0)}), PM10={row[1]:.2f} (raw: {raw_entry.get('pm10', 0)}), sin={row[2]:.3f}, cos={row[3]:.3f}, timestamp: {raw_entry.get('timestamp', 'N/A')}")
+            else:
+                print(f"     [{i}]: PM2.5={row[0]:.2f}, PM10={row[1]:.2f}, sin={row[2]:.3f}, cos={row[3]:.3f}")
         
         # Show NO2 data (first 5 and last 5 instances)
         print(f"\n📊 NO2 DATA (NO2, hour_sin, hour_cos):")
