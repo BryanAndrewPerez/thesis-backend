@@ -256,16 +256,23 @@ def fetch_firebase_data(location="", hours=24):
         if data:
             print(f"Data keys: {list(data.keys())[:5] if isinstance(data, dict) else 'Not a dict'}")
             
-            # Check field names in the first reading
+            # Check field names in the first reading to understand structure
             if isinstance(data, dict):
+                first_device_id = list(data.keys())[0]
                 first_device = list(data.values())[0]
+                print(f"🔍 First device ID: {first_device_id}")
                 if isinstance(first_device, dict):
+                    first_timestamp_key = list(first_device.keys())[0]
                     first_reading = list(first_device.values())[0]
+                    print(f"🔍 First timestamp_key: {first_timestamp_key}")
+                    print(f"🔍 First reading type: {type(first_reading)}")
                     if isinstance(first_reading, dict):
                         field_names = list(first_reading.keys())
                         print(f"Available field names: {field_names}")
                         pm_fields = [f for f in field_names if 'pm' in f.lower()]
                         print(f"PM-related fields: {pm_fields}")
+                    else:
+                        print(f"⚠️  First reading is not a dict, it's: {type(first_reading)}")
         else:
             print("No data found in Firebase")
         
@@ -301,20 +308,103 @@ def fetch_firebase_data(location="", hours=24):
                 readings = reading['readings']
                 timestamp_key = reading['timestamp_key']
                 
-                # Parse the actual timestamp from Firebase (format: "2025-11-02_01-01-31" -> "YYYY-MM-DD_HH-MM-SS")
-                # Convert "2025-11-02_01-01-31" to "2025-11-02 01:01:31"
-                try:
-                    # Split by underscore: date = "2025-11-02", time = "01-01-31"
-                    date_str, time_str = timestamp_key.split('_', 1)
-                    # Replace dashes in time with colons: "01-01-31" -> "01:01:31"
-                    time_str = time_str.replace('-', ':')
-                    # Combine: "2025-11-02 01:01:31"
-                    timestamp_str = f"{date_str} {time_str}"
-                    # Parse to datetime object
-                    data_time = datetime.strptime(timestamp_str, "%Y-%m-%d %H:%M:%S")
-                except (ValueError, AttributeError) as e:
-                    print(f"⚠️  Warning: Could not parse timestamp '{timestamp_key}': {e}, skipping this reading")
-                    continue
+                # Parse the actual timestamp - handle both timestamp strings and Firebase push keys
+                data_time = None
+                
+                # Method 1: Try parsing as timestamp string (format: "2025-11-02_01-01-31")
+                # Check if it's NOT a Firebase push key and has the expected format
+                if not timestamp_key.startswith('-') and '_' in timestamp_key:
+                    try:
+                        # Split by underscore: date = "2025-11-02", time = "01-01-31"
+                        parts = timestamp_key.split('_', 1)
+                        if len(parts) == 2:
+                            date_str, time_str = parts
+                            # Check if date part looks like YYYY-MM-DD (has 2 dashes and starts with 4-digit year)
+                            if date_str.count('-') == 2:
+                                year_part = date_str.split('-')[0]
+                                if len(year_part) == 4 and year_part.isdigit():
+                                    # Replace dashes in time with colons: "01-01-31" -> "01:01:31"
+                                    time_str = time_str.replace('-', ':')
+                                    # Combine: "2025-11-02 01:01:31"
+                                    timestamp_str = f"{date_str} {time_str}"
+                                    # Parse to datetime object
+                                    data_time = datetime.strptime(timestamp_str, "%Y-%m-%d %H:%M:%S")
+                    except (ValueError, AttributeError, IndexError):
+                        pass  # Try next method
+                
+                # Method 2: Check if readings contain a timestamp field (common when key is a push key)
+                if data_time is None and isinstance(readings, dict):
+                    # Look for timestamp fields in readings - prioritize common field names
+                    for ts_field in ['timestamp', 'timestamp_key', 'time', 'datetime', 'date', 'created_at', 'updated_at']:
+                        if ts_field in readings:
+                            try:
+                                ts_value = readings[ts_field]
+                                # Try parsing different formats
+                                if isinstance(ts_value, str):
+                                    # Try format "2025-11-02_01-01-31"
+                                    if '_' in ts_value and not ts_value.startswith('-'):
+                                        date_str, time_str = ts_value.split('_', 1)
+                                        if date_str.count('-') == 2:  # Valid date format
+                                            time_str = time_str.replace('-', ':')
+                                            timestamp_str = f"{date_str} {time_str}"
+                                            data_time = datetime.strptime(timestamp_str, "%Y-%m-%d %H:%M:%S")
+                                    # Try format "2025-11-02 01:01:31"
+                                    elif ' ' in ts_value:
+                                        data_time = datetime.strptime(ts_value, "%Y-%m-%d %H:%M:%S")
+                                elif isinstance(ts_value, (int, float)):
+                                    # Unix timestamp (milliseconds or seconds)
+                                    if ts_value > 1e10:  # Likely milliseconds
+                                        data_time = datetime.fromtimestamp(ts_value / 1000)
+                                    else:  # Likely seconds
+                                        data_time = datetime.fromtimestamp(ts_value)
+                                if data_time:
+                                    break
+                            except (ValueError, AttributeError, TypeError, OSError):
+                                continue
+                    
+                    # Also check all fields for timestamp-like patterns
+                    if data_time is None:
+                        for field_name, field_value in readings.items():
+                            if isinstance(field_value, str) and field_value.count('_') == 1:
+                                # Check if it looks like "2025-11-02_01-01-31"
+                                parts = field_value.split('_')
+                                if len(parts) == 2 and parts[0].count('-') == 2:
+                                    try:
+                                        date_str, time_str = parts
+                                        time_str = time_str.replace('-', ':')
+                                        timestamp_str = f"{date_str} {time_str}"
+                                        data_time = datetime.strptime(timestamp_str, "%Y-%m-%d %H:%M:%S")
+                                        print(f"🔍 Found timestamp in field '{field_name}': {field_value}")
+                                        break
+                                    except (ValueError, AttributeError):
+                                        continue
+                
+                # Method 3: For Firebase push keys, try to extract timestamp from nested structure
+                # Push keys start with '-' and are auto-generated by Firebase
+                if data_time is None:
+                    if timestamp_key.startswith('-') or len(timestamp_key) > 20:
+                        # This is likely a Firebase push key
+                        # Debug: Print available fields to see what we have
+                        if isinstance(readings, dict) and len(processed_data) < 3:
+                            print(f"🔍 Push key '{timestamp_key[:30]}' - Available fields: {list(readings.keys())}")
+                            # Check if readings might have nested structure with timestamp
+                            for key, value in readings.items():
+                                if isinstance(value, dict):
+                                    # Check nested dict for timestamp fields
+                                    for nested_key, nested_value in value.items():
+                                        if any(ts_word in nested_key.lower() for ts_word in ['time', 'date', 'stamp']):
+                                            print(f"🔍 Found nested timestamp field: {key}.{nested_key} = {nested_value}")
+                        
+                        # Since we couldn't find a timestamp, use push key order
+                        # Firebase push keys are chronologically ordered, so we can use relative ordering
+                        # We'll sort by the original key order later
+                        data_time = datetime.now() - timedelta(hours=len(processed_data))
+                        # Store original key for reference
+                        reading['original_key'] = timestamp_key
+                    else:
+                        # Unknown format - skip this reading
+                        print(f"⚠️  Warning: Could not parse timestamp '{timestamp_key}', skipping this reading")
+                        continue
                 
                 # Handle PM2.5 field name variations (prioritize PM2.5 over pm25)
                 # This ensures compatibility with models trained on "PM2.5" field names
