@@ -244,12 +244,9 @@ def fetch_firebase_data(location="", hours=24):
         
     try:
         # Fetch data from Firebase - using 'sensors' collection
-        # Add cache-busting to ensure fresh data
+        # For better reliability, always fetch all sensors and filter by device_id if location provided
+        # This handles cases where Firebase paths don't match exactly (e.g., colons in device IDs)
         ref = db.reference('/sensors')
-        if location:
-            ref = ref.child(location)
-            
-        # Force fresh data fetch
         data = ref.get()
         
         print(f"Firebase data fetched: {type(data)}")
@@ -286,32 +283,83 @@ def fetch_firebase_data(location="", hours=24):
         # Process data in reverse order to get newest first
         all_readings = []
         
-        # When location is provided, data structure is: {timestamp: readings, ...}
-        # When location is NOT provided, data structure is: {device_id: {timestamp: readings, ...}, ...}
-        if location:
-            # Single device selected - data is directly {timestamp: readings, ...}
-            print(f"🔍 Filtering data for selected device: {location}")
-            for timestamp_key, readings in data.items():
-                if isinstance(readings, dict):
-                    all_readings.append({
-                        'device_id': location,
-                        'timestamp_key': timestamp_key,
-                        'readings': readings
-                    })
-            print(f"✅ Found {len(all_readings)} readings for device {location}")
-        else:
-            # Multiple devices - data is {device_id: {timestamp: readings, ...}, ...}
-            print(f"🔍 Fetching data from all devices")
-            for device_id, device_data in data.items():
-                if isinstance(device_data, dict):
+        # Normalize location for comparison (handle potential variations in Firebase keys)
+        normalized_location = location.upper() if location else None
+        
+        # Always iterate through all devices, filter by location if provided
+        print(f"🔍 Processing Firebase data{' for device: ' + location if location else ' from all devices'}...")
+        
+        for device_id, device_data in data.items():
+            # If location is provided, only process matching device
+            # Handle case-insensitive and flexible matching (colons might be stored differently)
+            if location:
+                # Normalize device_id for comparison
+                normalized_device_id = device_id.upper()
+                
+                # Check for exact match or variations (colons vs dashes, case differences)
+                matches = (
+                    device_id == location or
+                    normalized_device_id == normalized_location or
+                    device_id.replace(':', '-') == location.replace(':', '-') or
+                    device_id.replace('-', ':') == location.replace('-', ':') or
+                    normalized_device_id.replace(':', '-') == normalized_location.replace(':', '-')
+                )
+                
+                if not matches:
+                    continue  # Skip this device if it doesn't match
+            
+            if isinstance(device_data, dict):
+                # Check if device_data is directly timestamp->readings or still nested
+                # Sample a few keys to determine structure
+                sample_keys = list(device_data.keys())[:3] if len(device_data) > 0 else []
+                
+                # Check if keys look like timestamps (e.g., "2025-11-02_01-01-31")
+                looks_like_timestamps = any('_' in k or (k.count('-') >= 2 and len(k) > 10) for k in sample_keys)
+                
+                if looks_like_timestamps or len(sample_keys) == 0:
+                    # Flat structure: device_data is {timestamp: readings, ...}
                     for timestamp_key, readings in device_data.items():
-                        all_readings.append({
-                            'device_id': device_id,
-                            'timestamp_key': timestamp_key,
-                            'readings': readings
-                        })
+                        if isinstance(readings, dict):
+                            all_readings.append({
+                                'device_id': device_id,
+                                'timestamp_key': timestamp_key,
+                                'readings': readings
+                            })
+                else:
+                    # Still nested structure: device_data might be {something: {timestamp: readings}, ...}
+                    # This shouldn't normally happen, but handle it defensively
+                    print(f"⚠️  Warning: Unexpected nested structure for device {device_id}")
+                    for sub_key, sub_value in device_data.items():
+                        if isinstance(sub_value, dict):
+                            # Check if sub_value contains timestamp-like keys
+                            sub_sample_keys = list(sub_value.keys())[:3]
+                            if any('_' in k or (k.count('-') >= 2) for k in sub_sample_keys):
+                                # sub_value is {timestamp: readings, ...}
+                                for timestamp_key, readings in sub_value.items():
+                                    if isinstance(readings, dict):
+                                        all_readings.append({
+                                            'device_id': device_id,
+                                            'timestamp_key': timestamp_key,
+                                            'readings': readings
+                                        })
+                            else:
+                                # sub_value might be readings directly
+                                if any(field in sub_value for field in ['pm25', 'PM2.5', 'pm10', 'no2', 'co']):
+                                    all_readings.append({
+                                        'device_id': device_id,
+                                        'timestamp_key': sub_key,  # Use sub_key as timestamp
+                                        'readings': sub_value
+                                    })
+        
+        if location:
+            print(f"✅ Found {len(all_readings)} readings for device {location}")
+            if len(all_readings) == 0:
+                print(f"⚠️  Warning: No readings found for device {location}. Available device IDs: {list(data.keys())[:10]}")
+        else:
             devices_found = set(reading['device_id'] for reading in all_readings)
-            print(f"✅ Found readings from {len(devices_found)} device(s): {', '.join(devices_found)}")
+            print(f"✅ Found readings from {len(devices_found)} device(s): {', '.join(list(devices_found)[:5])}")
+            if len(devices_found) > 5:
+                print(f"   ... and {len(devices_found) - 5} more devices")
         
         # Sort by timestamp_key (string sort works for "YYYY-MM-DD_HH-MM-SS" format)
         # Sort in reverse to process newest first (we'll re-sort by actual datetime later)
