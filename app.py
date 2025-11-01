@@ -285,14 +285,33 @@ def fetch_firebase_data(location="", hours=24):
         # Handle the nested structure: device_id -> timestamp_key -> readings
         # Process data in reverse order to get newest first
         all_readings = []
-        for device_id, device_data in data.items():
-            if isinstance(device_data, dict):
-                for timestamp_key, readings in device_data.items():
+        
+        # When location is provided, data structure is: {timestamp: readings, ...}
+        # When location is NOT provided, data structure is: {device_id: {timestamp: readings, ...}, ...}
+        if location:
+            # Single device selected - data is directly {timestamp: readings, ...}
+            print(f"🔍 Filtering data for selected device: {location}")
+            for timestamp_key, readings in data.items():
+                if isinstance(readings, dict):
                     all_readings.append({
-                        'device_id': device_id,
+                        'device_id': location,
                         'timestamp_key': timestamp_key,
                         'readings': readings
                     })
+            print(f"✅ Found {len(all_readings)} readings for device {location}")
+        else:
+            # Multiple devices - data is {device_id: {timestamp: readings, ...}, ...}
+            print(f"🔍 Fetching data from all devices")
+            for device_id, device_data in data.items():
+                if isinstance(device_data, dict):
+                    for timestamp_key, readings in device_data.items():
+                        all_readings.append({
+                            'device_id': device_id,
+                            'timestamp_key': timestamp_key,
+                            'readings': readings
+                        })
+            devices_found = set(reading['device_id'] for reading in all_readings)
+            print(f"✅ Found readings from {len(devices_found)} device(s): {', '.join(devices_found)}")
         
         # Sort by timestamp_key (string sort works for "YYYY-MM-DD_HH-MM-SS" format)
         # Sort in reverse to process newest first (we'll re-sort by actual datetime later)
@@ -442,6 +461,13 @@ def fetch_firebase_data(location="", hours=24):
             print(f"🔍 Oldest parsed timestamp: {processed_data[0]['timestamp']} ({processed_data[0]['time']})")
             print(f"🔍 Newest parsed timestamp: {processed_data[-1]['timestamp']} ({processed_data[-1]['time']})")
             print(f"Total instances available: {len(processed_data)}")
+            # Show which device(s) are being used for predictions
+            if location:
+                print(f"✅ Using data from selected device: {location}")
+            else:
+                devices_in_data = set(reading['device_id'] for reading in all_readings if 'device_id' in reading)
+                if devices_in_data:
+                    print(f"✅ Using data from device(s): {', '.join(devices_in_data)}")
         
         # Return the most recent 24 instances for prediction (last 24 instances = newest)
         recent_data = processed_data[-24:] if len(processed_data) >= 24 else processed_data
@@ -697,9 +723,15 @@ def debug_model_input():
     """Debug endpoint to show exact data being fed to ML models"""
     try:
         data = request.json
-        location = data.get("location", "")
+        # Accept multiple parameter names for device selection
+        location = (data.get("location") or 
+                   data.get("device_id") or 
+                   data.get("device") or 
+                   data.get("mac_address") or 
+                   data.get("deviceId") or 
+                   "")
         
-        # Fetch data from Firebase
+        # Fetch data from Firebase - only for the selected device if provided
         sensor_data = fetch_firebase_data(location)
         if not sensor_data:
             return jsonify({"error": "No sensor data available in Firebase"}), 400
@@ -926,11 +958,17 @@ def predict_all():
                 print(f"⚠️  Error parsing request data: {e}")
                 data = {}
         
-        location = data.get("location", "")
-        print(f"🔍 Location: {location}")
+        # Accept multiple parameter names for device selection (location, device_id, device, mac_address)
+        location = (data.get("location") or 
+                   data.get("device_id") or 
+                   data.get("device") or 
+                   data.get("mac_address") or 
+                   data.get("deviceId") or 
+                   "")
+        print(f"🔍 Device/Location: {location}")
         
-        # Fetch data from Firebase
-        print("🔍 Fetching Firebase data...")
+        # Fetch data from Firebase - only for the selected device if provided
+        print(f"🔍 Fetching Firebase data for device: {location if location else 'all devices'}...")
         sensor_data = fetch_firebase_data(location)
         if not sensor_data:
             print("❌ No sensor data from Firebase - returning safe fallback predictions")
