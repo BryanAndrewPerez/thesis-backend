@@ -287,19 +287,34 @@ def fetch_firebase_data(location="", hours=24):
                         'readings': readings
                     })
         
-        # Sort by timestamp_key (Firebase push keys are chronological) - NEWEST FIRST
+        # Sort by timestamp_key (string sort works for "YYYY-MM-DD_HH-MM-SS" format)
+        # Sort in reverse to process newest first (we'll re-sort by actual datetime later)
         all_readings.sort(key=lambda x: x['timestamp_key'], reverse=True)
         print(f"🔍 Total readings found: {len(all_readings)}")
         if all_readings:
-            print(f"🔍 Newest reading timestamp: {all_readings[0]['timestamp_key']}")
-            print(f"🔍 Oldest reading timestamp: {all_readings[-1]['timestamp_key']}")
+            print(f"🔍 First reading timestamp (string sorted): {all_readings[0]['timestamp_key']}")
+            print(f"🔍 Last reading timestamp (string sorted): {all_readings[-1]['timestamp_key']}")
         
         # Process the sorted readings
         for reading in all_readings:
             try:
                 readings = reading['readings']
-                # Use current time minus offset to create chronological order
-                data_time = datetime.now() - timedelta(hours=len(processed_data))
+                timestamp_key = reading['timestamp_key']
+                
+                # Parse the actual timestamp from Firebase (format: "2025-11-02_01-01-31" -> "YYYY-MM-DD_HH-MM-SS")
+                # Convert "2025-11-02_01-01-31" to "2025-11-02 01:01:31"
+                try:
+                    # Split by underscore: date = "2025-11-02", time = "01-01-31"
+                    date_str, time_str = timestamp_key.split('_', 1)
+                    # Replace dashes in time with colons: "01-01-31" -> "01:01:31"
+                    time_str = time_str.replace('-', ':')
+                    # Combine: "2025-11-02 01:01:31"
+                    timestamp_str = f"{date_str} {time_str}"
+                    # Parse to datetime object
+                    data_time = datetime.strptime(timestamp_str, "%Y-%m-%d %H:%M:%S")
+                except (ValueError, AttributeError) as e:
+                    print(f"⚠️  Warning: Could not parse timestamp '{timestamp_key}': {e}, skipping this reading")
+                    continue
                 
                 # Handle PM2.5 field name variations (prioritize PM2.5 over pm25)
                 # This ensures compatibility with models trained on "PM2.5" field names
@@ -313,7 +328,7 @@ def fetch_firebase_data(location="", hours=24):
                 if len(processed_data) < 3:
                     available_fields = list(readings.keys())
                     pm_fields = [f for f in available_fields if 'pm' in f.lower()]
-                    print(f"Reading {len(processed_data)}: PM fields found: {pm_fields}, using value: {pm25_value}")
+                    print(f"Reading {len(processed_data)}: Timestamp={timestamp_key}, PM fields found: {pm_fields}, using value: {pm25_value}")
                 
                 processed_data.append({
                     'timestamp': data_time.strftime("%Y-%m-%d %H:%M:%S"),
@@ -325,22 +340,25 @@ def fetch_firebase_data(location="", hours=24):
                     'so2': readings.get('so2', 0)
                 })
             except Exception as e:
-                print(f"Error processing reading {reading['timestamp_key']}: {e}")
+                print(f"Error processing reading {reading.get('timestamp_key', 'unknown')}: {e}")
+                import traceback
+                traceback.print_exc()
                 continue
                 
-        # Sort by timestamp and get the most recent data
+        # Sort by actual parsed timestamp (oldest to newest)
         processed_data.sort(key=lambda x: x['time'])
-        print(f"Processed {len(processed_data)} data points from Firebase")
+        print(f"Processed {len(processed_data)} data points from Firebase (after parsing timestamps)")
         if processed_data:
-            print(f"Oldest data: {processed_data[0]['timestamp']}")
-            print(f"Newest data: {processed_data[-1]['timestamp']}")
+            print(f"🔍 Oldest parsed timestamp: {processed_data[0]['timestamp']} ({processed_data[0]['time']})")
+            print(f"🔍 Newest parsed timestamp: {processed_data[-1]['timestamp']} ({processed_data[-1]['time']})")
             print(f"Total instances available: {len(processed_data)}")
         
         # Return the most recent 24 instances for prediction (last 24 instances = newest)
         recent_data = processed_data[-24:] if len(processed_data) >= 24 else processed_data
         print(f"Using {len(recent_data)} most recent instances for prediction")
         if recent_data:
-            print(f"🔍 Data time range: {recent_data[0]['timestamp']} to {recent_data[-1]['timestamp']}")
+            print(f"🔍 Selected data time range: {recent_data[0]['timestamp']} to {recent_data[-1]['timestamp']}")
+            print(f"🔍 Latest instance timestamp in selected data: {recent_data[-1]['timestamp']}")
         return recent_data
         
     except Exception as e:
