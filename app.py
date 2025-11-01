@@ -336,8 +336,8 @@ def fetch_firebase_data(location="", hours=24):
             print(f"Newest data: {processed_data[-1]['timestamp']}")
             print(f"Total instances available: {len(processed_data)}")
         
-        # Return the most recent 24 instances for prediction
-        recent_data = processed_data[:24] if len(processed_data) >= 24 else processed_data
+        # Return the most recent 24 instances for prediction (last 24 instances = newest)
+        recent_data = processed_data[-24:] if len(processed_data) >= 24 else processed_data
         print(f"Using {len(recent_data)} most recent instances for prediction")
         if recent_data:
             print(f"🔍 Data time range: {recent_data[0]['timestamp']} to {recent_data[-1]['timestamp']}")
