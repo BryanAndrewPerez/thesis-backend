@@ -609,15 +609,34 @@ def prepare_prediction_data(sensor_data):
     if not sensor_data:
         return None
         
-    # Take available data and pad to 72 if needed by repeating the last point forward in time
-    last_24_hours = sensor_data[-72:] if len(sensor_data) >= 72 else list(sensor_data)
-    if len(last_24_hours) < 72 and len(last_24_hours) > 0:
-        last_point = last_24_hours[-1]
+    # Build separate windows for PM (72) and NO2/CO (24). Pad each window independently if needed.
+    # PM window (72)
+    pm_window = sensor_data[-72:] if len(sensor_data) >= 72 else list(sensor_data)
+    if len(pm_window) < 72 and len(pm_window) > 0:
+        last_point = pm_window[-1]
         last_time = last_point.get('time', datetime.now())
-        pads_needed = 72 - len(last_24_hours)
+        pads_needed = 72 - len(pm_window)
         for i in range(pads_needed):
             pad_time = last_time + timedelta(hours=i + 1)
-            last_24_hours.append({
+            pm_window.append({
+                'timestamp': pad_time.strftime("%Y-%m-%d %H:%M:%S"),
+                'time': pad_time,
+                'pm25': float(last_point.get('pm25', 0) or 0),
+                'pm10': float(last_point.get('pm10', 0) or 0),
+                'no2': float(last_point.get('no2', 0) or 0),
+                'co': float(last_point.get('co', 0) or 0),
+                'so2': float(last_point.get('so2', 0) or 0)
+            })
+    
+    # NO2/CO window (24)
+    other_window = sensor_data[-24:] if len(sensor_data) >= 24 else list(sensor_data)
+    if len(other_window) < 24 and len(other_window) > 0:
+        last_point = other_window[-1]
+        last_time = last_point.get('time', datetime.now())
+        pads_needed = 24 - len(other_window)
+        for i in range(pads_needed):
+            pad_time = last_time + timedelta(hours=i + 1)
+            other_window.append({
                 'timestamp': pad_time.strftime("%Y-%m-%d %H:%M:%S"),
                 'time': pad_time,
                 'pm25': float(last_point.get('pm25', 0) or 0),
@@ -632,7 +651,8 @@ def prepare_prediction_data(sensor_data):
     no2_data = []
     co_data = []
     
-    for data_point in last_24_hours:
+    # PM features over 72-step window
+    for data_point in pm_window:
         # Extract hour for cyclical encoding
         hour = data_point['time'].hour
         hour_sin = math.sin(2 * math.pi * hour / 24)
@@ -650,17 +670,23 @@ def prepare_prediction_data(sensor_data):
             hour_sin,
             hour_cos
         ])
-        
+
+    # NO2/CO features over 24-step window
+    for data_point in other_window:
+        # Extract hour for cyclical encoding
+        hour = data_point['time'].hour
+        hour_sin = math.sin(2 * math.pi * hour / 24)
+        hour_cos = math.cos(2 * math.pi * hour / 24)
+
         # NO2 data: NO2, hour_sin, hour_cos
-        # Scale down NO2 values from 300+ range to 0-100 range for model compatibility
         raw_no2 = float(data_point.get('no2', 0))
-        scaled_no2 = raw_no2 / 4.0  # Scale down by factor of 4 (300+ -> 75+)
+        scaled_no2 = raw_no2 / 4.0
         no2_data.append([
             scaled_no2,
             hour_sin,
             hour_cos
         ])
-        
+
         # CO data: CO, hour_sin, hour_cos
         co_data.append([
             float(data_point.get('co', 0)),
