@@ -53,9 +53,9 @@ def initialize_firebase():
         return False
 
 # === Load PM model and scalers ===
-PM_MODEL_PATH = "models/chunk_pmonly.keras"
-PM_INPUT_SCALER_PATH = "models/input_scaler_pmonly.pkl"
-PM_TARGET_SCALERS_PATH = "models/target_scalers_pmonly.pkl"
+PM_MODEL_PATH = "models/newchunk_pmonly.keras"
+PM_INPUT_SCALER_PATH = "models/newinput_scaler_pmonly.pkl"
+PM_TARGET_SCALERS_PATH = "models/newtarget_scalers_pmonly.pkl"
 
 pm_model = None
 pm_input_scaler = None
