@@ -233,7 +233,7 @@ if os.getenv('EAGER_LOAD_MODELS', 'false').lower() == 'true':
 else:
     print("⏳ Skipping eager model load (EAGER_LOAD_MODELS != true)")
 
-def fetch_firebase_data(location="", hours=24):
+def fetch_firebase_data(location="", hours=72):
     """Fetch sensor data from Firebase for the last N hours"""
     print(f"🔍 fetch_firebase_data called with location='{location}', hours={hours}")
     print(f"🔍 firebase_initialized: {firebase_initialized}")
@@ -584,8 +584,8 @@ def fetch_firebase_data(location="", hours=24):
                 if devices_in_data:
                     print(f"✅ Using data from device(s): {', '.join(devices_in_data)}")
         
-        # Return the most recent 24 instances for prediction (last 24 instances = newest)
-        recent_data = processed_data[-24:] if len(processed_data) >= 24 else processed_data
+        # Return the most recent 72 instances for prediction (last 72 instances = newest)
+        recent_data = processed_data[-72:] if len(processed_data) >= 72 else processed_data
         print(f"Using {len(recent_data)} most recent instances for prediction")
         if recent_data:
             print(f"🔍 Selected data time range: {recent_data[0]['timestamp']} to {recent_data[-1]['timestamp']}")
@@ -609,12 +609,12 @@ def prepare_prediction_data(sensor_data):
     if not sensor_data:
         return None
         
-    # Take available data and pad to 24 if needed by repeating the last point forward in time
-    last_24_hours = sensor_data[-24:] if len(sensor_data) >= 24 else list(sensor_data)
-    if len(last_24_hours) < 24 and len(last_24_hours) > 0:
+    # Take available data and pad to 72 if needed by repeating the last point forward in time
+    last_24_hours = sensor_data[-72:] if len(sensor_data) >= 72 else list(sensor_data)
+    if len(last_24_hours) < 72 and len(last_24_hours) > 0:
         last_point = last_24_hours[-1]
         last_time = last_point.get('time', datetime.now())
-        pads_needed = 24 - len(last_24_hours)
+        pads_needed = 72 - len(last_24_hours)
         for i in range(pads_needed):
             pad_time = last_time + timedelta(hours=i + 1)
             last_24_hours.append({
@@ -679,7 +679,7 @@ def home():
     return jsonify({
         "message": "Air Quality Prediction API",
         "available_endpoints": {
-            "/predict_pm": "POST - Predict PM2.5 and PM10 (requires 24x4 input: PM2.5, PM10, hour_sin, hour_cos)",
+            "/predict_pm": "POST - Predict PM2.5 and PM10 (requires 72x4 input: PM2.5, PM10, hour_sin, hour_cos)",
             "/predict_no2": "POST - Predict NO2 (requires 24x3 input: NO2, hour_sin, hour_cos)",
             "/predict_co": "POST - Predict CO (requires 24x3 input: CO, hour_sin, hour_cos)",
             "/predict_all": "POST/GET - Predict all pollutants using Firebase data (accepts JSON, form data, or query params)",
@@ -907,7 +907,7 @@ def debug_model_input():
             "co_data": co_data,
             "total_instances": len(sensor_data),
             "description": {
-                "pm": "PM2.5, PM10, hour_sin, hour_cos (24 instances)",
+                "pm": "PM2.5, PM10, hour_sin, hour_cos (72 instances)",
                 "no2": "NO2, hour_sin, hour_cos (24 instances)",
                 "co": "CO, hour_sin, hour_cos (24 instances)"
             }
@@ -924,13 +924,13 @@ def predict_pm():
             
         data = request.json
 
-        # Expect 24 hours of input with PM2.5, PM10, hour_sin, hour_cos
-        values = np.array(data["values"])  # shape (24, 4)
-        if values.shape != (24, 4):
-            return jsonify({"error": "Expected 24 rows of 4 features each (PM2.5, PM10, hour_sin, hour_cos)"}), 400
+        # Expect 72 hours of input with PM2.5, PM10, hour_sin, hour_cos
+        values = np.array(data["values"])  # shape (72, 4)
+        if values.shape != (72, 4):
+            return jsonify({"error": "Expected 72 rows of 4 features each (PM2.5, PM10, hour_sin, hour_cos)"}), 400
 
         # Scale inputs
-        scaled_input = pm_input_scaler.transform(values).reshape(1, 24, 4)
+        scaled_input = pm_input_scaler.transform(values).reshape(1, 72, 4)
 
         # Predict
         pred_scaled = pm_model.predict(scaled_input)  # shape (1, 336, 2)
@@ -1139,14 +1139,14 @@ def predict_all():
         # Show PM data (first 5 and last 5 instances)
         print(f"\n📊 PM DATA (PM2.5, PM10, hour_sin, hour_cos):")
         print(f"   Shape: {prediction_data['pm'].shape}")
-        print(f"   Note: Indices 0-23 represent the 24 instances, where [0] is oldest and [23] is newest")
+        print(f"   Note: Indices 0-71 represent the 72 instances, where [0] is oldest and [71] is newest")
         print(f"   First 5 instances:")
         for i in range(min(5, len(prediction_data['pm']))):
             row = prediction_data['pm'][i]
             # Map array index to sensor_data index
-            # sensor_data is sorted oldest to newest, and we took the last 24
-            # So pm_data[i] corresponds to sensor_data[len(sensor_data) - 24 + i]
-            idx_in_sensor = len(sensor_data) - 24 + i if len(sensor_data) >= 24 else i
+            # sensor_data is sorted oldest to newest, and we took the last 72
+            # So pm_data[i] corresponds to sensor_data[len(sensor_data) - 72 + i]
+            idx_in_sensor = len(sensor_data) - 72 + i if len(sensor_data) >= 72 else i
             if idx_in_sensor >= 0 and idx_in_sensor < len(sensor_data):
                 raw_entry = sensor_data[idx_in_sensor]
                 print(f"     [{i}]: PM2.5={row[0]:.2f} (raw: {raw_entry.get('pm25', 0)}), PM10={row[1]:.2f} (raw: {raw_entry.get('pm10', 0)}), sin={row[2]:.3f}, cos={row[3]:.3f}, timestamp: {raw_entry.get('timestamp', 'N/A')}")
@@ -1156,7 +1156,7 @@ def predict_all():
         for i in range(max(0, len(prediction_data['pm'])-5), len(prediction_data['pm'])):
             row = prediction_data['pm'][i]
             # Map array index to sensor_data index
-            idx_in_sensor = len(sensor_data) - 24 + i if len(sensor_data) >= 24 else i
+            idx_in_sensor = len(sensor_data) - 72 + i if len(sensor_data) >= 72 else i
             if idx_in_sensor >= 0 and idx_in_sensor < len(sensor_data):
                 raw_entry = sensor_data[idx_in_sensor]
                 print(f"     [{i}]: PM2.5={row[0]:.2f} (raw: {raw_entry.get('pm25', 0)}), PM10={row[1]:.2f} (raw: {raw_entry.get('pm10', 0)}), sin={row[2]:.3f}, cos={row[3]:.3f}, timestamp: {raw_entry.get('timestamp', 'N/A')}")
@@ -1203,7 +1203,7 @@ def predict_all():
                 print(f"PM input sample: {prediction_data['pm'][0]}")
                 
                 # Scale inputs
-                scaled_input = pm_input_scaler.transform(prediction_data['pm']).reshape(1, 24, 4)
+                scaled_input = pm_input_scaler.transform(prediction_data['pm']).reshape(1, 72, 4)
                 print(f"PM scaled input shape: {scaled_input.shape}")
                 
                 # Predict
